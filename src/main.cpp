@@ -2,7 +2,7 @@
 #include <ESP8266WiFi.h>
 #include <EEPROM.h>
 #include <WiFiServer.h>
-#include <WiFi.h>
+#include <ESP8266WiFi.h>
 
 #define EEPROM_SIZE 32
 #define MAX_NODES 10
@@ -32,22 +32,9 @@ String message;
 String parameter[7];
 int parameterCount = 0;
 
+WiFiEventHandler gotIpEventHandler;
 
-void sendPacket(IPAddress ip, int port, String &message){
-  Serial.println("Sending Packet!!!");
-  Serial.println("Message Content:");
-  Serial.println(message);
-  WiFiClient client;
-  Serial.print("IP: ");
-  Serial.println(ip);
-  if(client.connect(ip, port)){
-    client.println(message);
-    client.stop();
-    Serial.println("Sent!");
-  }else{
-    Serial.println("Connection Failed");
-  }
-}
+
 
 void writeMemory(char addr, char *data){
   int i;
@@ -83,6 +70,7 @@ void setMetaData(){
 
 void configure()
 {
+  Serial.println("Inconfigure!");
   message = "HTTP/1.1 200 OK\n\n";
   message.concat("client@node\naction@config\n");
   message.concat(type);
@@ -92,14 +80,6 @@ void configure()
   message.concat(relayStat);
   message.concat("\n");
   sendPacket(masterIP, port, message);
-}
-
-void WiFiEvent(WiFiEvent_t event){
-   switch(event) {
-     case SYSTEM_EVENT_STA_GOT_IP:
-        configure();
-        break;
-   }
 }
 
 void separateParameters(String &body){
@@ -121,17 +101,15 @@ void separateParameters(String &body){
 
 void readPacket(WiFiClient client){
   String packetData = "", bodyLine = "", curLine = "";
-  char c;
   int m = client.available();
   while(m!=0){
-    //c = client.read();
     packetData.concat(client.read());
     m--;
   }
 
   Serial.println("Packet: ");
   Serial.println(packetData);
-  int n, i;
+  int n = 0, i;
   for(i=0; i<packetData.length(); i++){
     if(packetData[i] == '\n'){
       if(curLine.length() == 0){
@@ -141,7 +119,7 @@ void readPacket(WiFiClient client){
         curLine = "";
       }
     }else if(packetData[i] == '\r'){
-      curLine += c;
+      curLine += packetData[i];
     }
   }
   bodyLine = packetData.substring(n, packetData.length());
@@ -151,9 +129,23 @@ void readPacket(WiFiClient client){
   separateParameters(bodyLine);
 }
 
+void sendPacket(IPAddress ip, int port, String &message){
+  Serial.println("Sending Packet: ");
+  Serial.println(message);
+  WiFiClient client;
+  Serial.print("To IP: ");
+  Serial.println(ip);
+  if(client.connect(ip, port)){
+    client.println(message);
+    client.stop();
+    Serial.println("Sent!");
+  }else{
+    Serial.println("Connection To client Failed!");
+  }
+}
 
 void setup() {
-  Serial.begin(460800);
+  Serial.begin(115200);
 
   EEPROM.begin(EEPROM_SIZE);
   delay(500);
@@ -163,22 +155,25 @@ void setup() {
   WiFi.begin(ssid,password);
   Serial.println("STA MODE....");
   Serial.print("Connecting..");
-  
-  WiFi.onEvent(WiFiEvent);
+
+  gotIpEventHandler = WiFi.onStationModeGotIP([](const WiFiEventStationModeGotIP& event)
+  {
+    Serial.print("Station connected, IP: ");
+    Serial.println(WiFi.localIP());
+    configure();
+  });
+
 
   while(WiFi.status() != WL_CONNECTED)
   {
     delay(500);
     Serial.print(".");
   }
-  Serial.print("Connected, IP: ");
-  Serial.println(WiFi.localIP());
-  Serial.print("Connected TO IP: ");
-  Serial.println(WiFi.hostname());
   delay(300);
   server.begin();
-  configure();
+  Serial.printf("\nServer Started: %d", port);
 }
+
 
 void loop() {
   if(server.hasClient())
@@ -192,10 +187,6 @@ void loop() {
     readPacket(client);
     client.stop();
 
-    if(bodyLines[1].equals("action@config")){
-      id = bodyLines[2].toInt();
-      Serial.print("Configured as : ");
-      Serial.println(id);
-    }
+   
   }
 }
