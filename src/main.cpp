@@ -4,20 +4,21 @@
 #include <WiFiServer.h>
 #include <ESP8266WiFi.h>
 
-#define EEPROM_SIZE 32
+#define EEPROM_SIZE 48
 #define MAX_NODES 10
 #define MAX_BODY_LINES 7
 #define MAX_CLIENTS 5
 
 using namespace std;
 
-//const char* default_ssid="ESP32";
-//const char* default_pass="12345678";
-const int ssidLoc = 0, passLoc = 10; 
+const char* default_SSID="ESP32";
+const char* default_pass="12345678";
+const char* default_name = "Node";
+const int ssidLoc = 0, passLoc = 10, nameLoc = 20; 
 const int port = 9999;
 int currClientIndex = 0;
 int curBodyLineCount = 0;
-char ssid[11], password[11];
+char ssid[11], password[11], name[11];
 IPAddress masterIP(192, 168, 1, 1);
 WiFiServer server(port);
 
@@ -25,15 +26,12 @@ int id = -1;
 int conStat = 0;
 int relayStat = 0;
 const int type = 2;
-String deafultName = "Node", name = "Node";
 String message; 
 
 String parameter[7];
 int parameterCount = 0;
 
 WiFiEventHandler gotIpEventHandler;
-
-
 
 void writeMemory(char addr, char *data){
   int i;
@@ -67,17 +65,40 @@ void setMetaData(){
   writeMemory(passLoc, password);
 }
 
+void getName()
+{
+  readMemory(nameLoc, name);
+}
+
+void setName()
+{
+  writeMemory(nameLoc, name);
+}
+
+void sendPacket(IPAddress ip, int port, String &message){
+  Serial.println("Sending Packet: ");
+  Serial.println(message);
+  WiFiClient client;
+  Serial.print("To IP: ");
+  Serial.println(ip);
+  if(client.connect(ip, port)){
+    client.print(message);
+    client.stop();
+    Serial.println("Sent!");
+  }else{
+    Serial.println("Connection To client Failed!");
+  }
+}
+
 void configure()
 {
-  Serial.println("Inconfigure!");
+  Serial.println("In configure!");
   message = "HTTP/1.1 200 OK\n\n";
-  message.concat("client@node\naction@config\n");
-  message.concat(type);
-  message.concat("\n");
+  message.concat("client@node#action@config#2#0");
   message.concat(name);
-  message.concat("\n");
+  message.concat("#0#");
   message.concat(relayStat);
-  message.concat("\n");
+  message.concat("#");
   sendPacket(masterIP, port, message);
 }
 
@@ -128,28 +149,30 @@ void readPacket(WiFiClient client){
   separateParameters(bodyLine);
 }
 
-void sendPacket(IPAddress ip, int port, String &message){
-  Serial.println("Sending Packet: ");
-  Serial.println(message);
-  WiFiClient client;
-  Serial.print("To IP: ");
-  Serial.println(ip);
-  if(client.connect(ip, port)){
-    client.print(message);
-    client.stop();
-    Serial.println("Sent!");
-  }else{
-    Serial.println("Connection To client Failed!");
-  }
+
+
+void restartDevice(){
+  Serial.println("Restarting....");
+  delay(1000);
+  ESP.restart();
+}
+
+void resetDevice(){
+  strcpy(ssid, default_SSID);
+  strcpy(password, default_pass);
+  strcpy(name, default_name);
+  setMetaData();
+  setName();
+  restartDevice();
 }
 
 void recevicePacket()
 {
   if(parameter[1].equals("action@stat"))
   {
-    name = parameter[4];
-    conStat = parameter[5].toInt;
-    relayStat = parameter[6].toInt;
+    strcpy(name, parameter[4].c_str());
+    conStat = parameter[5].toInt();
+    relayStat = parameter[6].toInt();
 
   }
   else if(parameter[1].equals("action@config"))
@@ -166,15 +189,11 @@ void recevicePacket()
   }
   else if(parameter[1].equals("action@reset"))
   {
-    //Serial.println("Reset function is call");
+    resetDevice();
   }
-  else
-  {
-    //Serial.println("Not found any action!");
-  }
-  
-  
 }
+
+
 
 void setup() {
   Serial.begin(115200);
@@ -183,6 +202,7 @@ void setup() {
   delay(500);
   
   getMetaData();
+  getName();
   WiFi.mode(WIFI_STA);
   WiFi.begin(ssid,password);
   Serial.println("STA MODE....");
