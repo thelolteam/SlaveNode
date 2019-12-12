@@ -19,14 +19,13 @@ int currClientIndex = 0;
 int curBodyLineCount = 0;
 char ssid[11], password[11];
 IPAddress masterIP(192, 168, 1, 1);
-String bodyLines[MAX_BODY_LINES];
 WiFiServer server(port);
 
 int id = -1;
 int conStat = 0;
 int relayStat = 0;
-int type=1;
-String name = "slave";
+const int type = 2;
+String deafultName = "Node", name = "Node";
 String message; 
 
 String parameter[7];
@@ -136,12 +135,45 @@ void sendPacket(IPAddress ip, int port, String &message){
   Serial.print("To IP: ");
   Serial.println(ip);
   if(client.connect(ip, port)){
-    client.println(message);
+    client.print(message);
     client.stop();
     Serial.println("Sent!");
   }else{
     Serial.println("Connection To client Failed!");
   }
+}
+
+void recevicePacket()
+{
+  if(parameter[1].equals("action@stat"))
+  {
+    name = parameter[4];
+    conStat = parameter[5].toInt;
+    relayStat = parameter[6].toInt;
+
+  }
+  else if(parameter[1].equals("action@config"))
+  {
+    id = parameter[3].toInt();
+    //Serial.println("Do as parameter line 3");
+  }
+  else if(parameter[1].equals("action@apconfig"))
+  {
+    strcpy(ssid, parameter[2].c_str());
+    strcpy(password, parameter[3].c_str());
+    setMetaData();
+    //Serial.println("Do as parameter line 2, 3");
+  }
+  else if(parameter[1].equals("action@reset"))
+  {
+    //Serial.println("Reset function is call");
+  }
+  else
+  {
+    //Serial.println("Not found any action!");
+  }
+  
+  
 }
 
 void setup() {
@@ -186,7 +218,6 @@ void loop() {
     Serial.println("Available");
     readPacket(client);
     client.stop();
-
-   
+    recevicePacket();
   }
 }
