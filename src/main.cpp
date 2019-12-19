@@ -111,9 +111,10 @@ void sendPacket(IPAddress ip, int port, String &message){
 
 void configure()
 {
+  //type#id#name#conStat#relayStat#
   Serial.println("In configure!");
   message = "HTTP/1.1 200 OK\n\n";
-  message.concat("client@node#action@config#2#0");
+  message.concat("client@node#action@config#2#0#");
   message.concat(name);
   message.concat("#0#");
   message.concat(relayStat);
@@ -167,8 +168,6 @@ void readPacket(WiFiClient client){
   Serial.println("|");
   separateParameters(bodyLine);
 }
-
-
 
 void restartDevice(){
   Serial.println("Restarting....");
