@@ -8,8 +8,12 @@
 #define MAX_NODES 10
 #define MAX_BODY_LINES 7
 #define MAX_CLIENTS 5
+#define powerBtn 2
+#define led 16
 
 using namespace std;
+
+
 
 const char* default_SSID="ESP32";
 const char* default_pass="12345678";
@@ -32,6 +36,21 @@ String parameter[7];
 int parameterCount = 0;
 
 WiFiEventHandler gotIpEventHandler;
+
+void printDetails(){
+  Serial.print("Id=");
+  Serial.println(id);
+  Serial.print("Constat=");
+  Serial.println(conStat);
+  Serial.print("RelayStat=");
+  Serial.println(relayStat);
+  Serial.print("ssid=");
+  Serial.println(ssid);
+  Serial.print("password=");
+  Serial.println(password);
+  Serial.print("Name=");
+  Serial.println(name);
+}
 
 void writeMemory(char addr, char *data){
   int i;
@@ -173,7 +192,6 @@ void recevicePacket()
     strcpy(name, parameter[4].c_str());
     conStat = parameter[5].toInt();
     relayStat = parameter[6].toInt();
-
   }
   else if(parameter[1].equals("action@config"))
   {
@@ -191,11 +209,13 @@ void recevicePacket()
   {
     resetDevice();
   }
+  printDetails();
 }
 
 
 
 void setup() {
+  pinMode(powerBtn, INPUT);
   Serial.begin(115200);
 
   EEPROM.begin(EEPROM_SIZE);
@@ -228,6 +248,29 @@ void setup() {
 
 
 void loop() {
+  if(digitalRead(powerBtn) == LOW){
+    digitalWrite(led, HIGH);
+    unsigned long cur = millis();
+    while(digitalRead(powerBtn) == LOW && millis() - cur < 1000);
+    if(millis() - cur > 1000){
+      Serial.println("Press and Hold");
+      delay(1000);
+    }else
+    {
+      cur = millis();
+      while(millis() - cur < 500 && digitalRead(powerBtn) == HIGH);
+      if(millis() - cur < 500)
+      {
+        Serial.println("DoubleTap");
+        delay(1000);
+      }
+      else
+      {
+        Serial.println("SingleTap");
+        delay(1000);
+      }
+    }
+  }
   if(server.hasClient())
   {
     Serial.println("New Client");
