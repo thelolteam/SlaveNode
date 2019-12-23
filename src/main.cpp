@@ -31,7 +31,6 @@ int conStat = 0;
 int relayStat = 0;
 const int type = 2;
 String message, url="";
-String msg="okay"; 
 
 String parameter[7];
 int parameterCount = 0;
@@ -40,17 +39,17 @@ WiFiEventHandler gotIpEventHandler;
 WiFiEventHandler stationModeDisconnectedHandler;
 
 void printDetails(){
-  Serial.print("Id=");
+  Serial.print("Id: ");
   Serial.println(id);
-  Serial.print("Constat=");
+  Serial.print("Constat: ");
   Serial.println(conStat);
-  Serial.print("RelayStat=");
+  Serial.print("RelayStat: ");
   Serial.println(relayStat);
-  Serial.print("ssid=");
+  Serial.print("ssid: ");
   Serial.println(ssid);
-  Serial.print("password=");
+  Serial.print("password: ");
   Serial.println(password);
-  Serial.print("Name=");
+  Serial.print("Name: ");
   Serial.println(name);
 }
 
@@ -71,8 +70,6 @@ void writeMemory(char addr, char *data){
   }
   EEPROM.write(addr+i, '\0');
   EEPROM.commit();
-  Serial.print("Wrote: ");
-  Serial.println(data);
 }
 
 void readMemory(char addr, char *data){
@@ -124,26 +121,21 @@ void resetDevice(){
 void separateParameters(String &body){
   parameterCount = 0;
   int startI = 0, endI = 0, i;
-  Serial.println();
   for(i=0; i<7; i++){
     parameter[i] = "";
     if(startI<body.length()){
       endI = body.indexOf('$', startI);
       parameter[i] = body.substring(startI, endI);
-      Serial.println(parameter[i]);
       startI = endI+1;
       parameterCount++;
     }
   }
-  Serial.print("PC: ");
-  Serial.println(parameterCount);
 }
 
 void sendReply(String message){
-  Serial.print("Replying: ");
+  Serial.print("Replying with: ");
   Serial.println(message);
   server.send(200, "text/plain", message);
-  Serial.println("Reply done");
 }
 
 void parameterDecode()
@@ -161,7 +153,7 @@ void parameterDecode()
     Serial.print("ID Received: ");
     Serial.println(id);
     sendReply("Node: Config RCVD");
-    //Serial.println("Do as parameter line 3");
+
   }
   else if(parameter[1].equals("action@apconfig"))
   {
@@ -169,7 +161,6 @@ void parameterDecode()
     strcpy(password, parameter[3].c_str());
     setMetaData();
     sendReply("NODE: APConfig RCVD");
-    //Serial.println("Do as parameter line 2, 3");
   }
   else if(parameter[1].equals("action@reset"))
   {
@@ -225,14 +216,7 @@ void configure()
   message.concat(relayStat);
   message.concat("$");
   sendPacket(masterIP, port, message);
-  Serial.println("OUt of send message");
 }
-
-
-
-
-
-
 
 void handleRoot(){
   Serial.println("Root page accessed by a client!");
@@ -250,7 +234,6 @@ void handleMessage(){
     message = server.arg("data");
     separateParameters(message);
     parameterDecode();
-    Serial.println("Message Handled");
   }else{
     server.send(200, "text/plain", "Message Without Body");
   }
@@ -270,12 +253,11 @@ void setup() {
   printDetails();
   WiFi.mode(WIFI_STA);
   WiFi.begin(ssid,password);
-  Serial.println("STA MODE....");
-  Serial.print("Connecting..");
+  Serial.print("Connecting in STA Mode..");
 
   gotIpEventHandler = WiFi.onStationModeGotIP([](const WiFiEventStationModeGotIP& event)
   {
-    Serial.print("Station connected, IP: ");
+    Serial.print("Connected to AP, IP: ");
     Serial.println(WiFi.localIP());
     ipAssigned = 1;
   });
@@ -284,17 +266,6 @@ void setup() {
   {
     ipAssigned = 0;
   });
-
-  /*while(WiFi.status() != WL_CONNECTED)
-  {
-    delay(500);
-    Serial.print(".");
-  }
-  delay(300);
-  while(!ipAssigned);
-  configure();
-  server.begin();
-  Serial.println("Server Started!"); */
 }
 
 
@@ -304,18 +275,17 @@ void loop() {
     while (WiFi.status() != WL_CONNECTED) {
       delay(200);
       Serial.print(".");
-      Serial.print(digitalRead(powerBtn));
-      blink(1);
+      //blink(1);
     }
     
     if(WiFi.status() == WL_CONNECTED){
       while(!ipAssigned);
       configure();
-      Serial.println("Configured");
       server.on("/", handleRoot);
       server.on("/message", handleMessage);
       server.onNotFound(handleNotFound);
       server.begin();
+      Serial.printf("\nServer ON: %d\n", port);
       blink(3);
     }
   }
@@ -342,11 +312,9 @@ void loop() {
         if(relayStat == 1){
           digitalWrite(relay, HIGH);
           relayStat = 0;
-          Serial.println("Relay HIgh");
         }else{
           digitalWrite(relay, LOW);
           relayStat = 1;
-          Serial.println("Relay LOW");
         }
         sendNodeStat();
       }
