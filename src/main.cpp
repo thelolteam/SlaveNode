@@ -19,7 +19,7 @@ const char* default_SSID="ESP32";
 const char* default_pass="12345678";
 const char* default_name = "Node";
 const int ssidLoc = 0, passLoc = 10, nameLoc = 20; 
-const int port = 8080;
+const int port = 80;
 char ssid[11], password[11], name[11];
 
 IPAddress masterIP(192, 168, 1, 1);
@@ -31,7 +31,6 @@ int conStat = 0;
 int relayStat = 0;
 const int type = 2;
 String message, url="";
-String msg="okay"; 
 
 String parameter[7];
 int parameterCount = 0;
@@ -40,17 +39,17 @@ WiFiEventHandler gotIpEventHandler;
 WiFiEventHandler stationModeDisconnectedHandler;
 
 void printDetails(){
-  Serial.print("Id=");
+  Serial.print("Id: ");
   Serial.println(id);
-  Serial.print("Constat=");
+  Serial.print("Constat: ");
   Serial.println(conStat);
-  Serial.print("RelayStat=");
+  Serial.print("RelayStat: ");
   Serial.println(relayStat);
-  Serial.print("ssid=");
+  Serial.print("ssid: ");
   Serial.println(ssid);
-  Serial.print("password=");
+  Serial.print("password: ");
   Serial.println(password);
-  Serial.print("Name=");
+  Serial.print("Name: ");
   Serial.println(name);
 }
 
@@ -63,6 +62,7 @@ void blink(int times){
   }
 }
 
+
 void writeMemory(char addr, char *data){
   int i;
   for(i=0; data[i]!='\0' && i<10; i++){
@@ -70,8 +70,6 @@ void writeMemory(char addr, char *data){
   }
   EEPROM.write(addr+i, '\0');
   EEPROM.commit();
-  Serial.print("Wrote: ");
-  Serial.println(data);
 }
 
 void readMemory(char addr, char *data){
@@ -123,26 +121,21 @@ void resetDevice(){
 void separateParameters(String &body){
   parameterCount = 0;
   int startI = 0, endI = 0, i;
-  Serial.println();
   for(i=0; i<7; i++){
     parameter[i] = "";
     if(startI<body.length()){
       endI = body.indexOf('$', startI);
       parameter[i] = body.substring(startI, endI);
-      Serial.println(parameter[i]);
       startI = endI+1;
       parameterCount++;
     }
   }
-  Serial.print("PC: ");
-  Serial.println(parameterCount);
 }
 
 void sendReply(String message){
-  Serial.print("Replying: ");
+  Serial.print("Replying with: ");
   Serial.println(message);
   server.send(200, "text/plain", message);
-  Serial.println("Reply done");
 }
 
 void parameterDecode()
@@ -157,11 +150,10 @@ void parameterDecode()
   else if(parameter[1].equals("action@config"))
   {
     id = parameter[3].toInt();
-    conStat = parameter[5].toInt();
     Serial.print("ID Received: ");
     Serial.println(id);
     sendReply("Node: Config RCVD");
-    //Serial.println("Do as parameter line 3");
+
   }
   else if(parameter[1].equals("action@apconfig"))
   {
@@ -169,7 +161,7 @@ void parameterDecode()
     strcpy(password, parameter[3].c_str());
     setMetaData();
     sendReply("NODE: APConfig RCVD");
-    //Serial.println("Do as parameter line 2, 3");
+    restartDevice();
   }
   else if(parameter[1].equals("action@reset"))
   {
@@ -182,7 +174,7 @@ void parameterDecode()
 void sendPacket(IPAddress ip, int port, String &message){
   url = "http://";
   url.concat(ip.toString());
-  url.concat(":8080/message?data=");
+  url.concat("/message?data=");
   url.concat(message);
 
   Serial.print("URL: ");
@@ -199,6 +191,8 @@ void sendPacket(IPAddress ip, int port, String &message){
   }
   client.end();
 }
+
+
 
 void sendNodeStat(){
   message = "client@node$action@stat$2$";
@@ -223,13 +217,13 @@ void configure()
   message.concat(relayStat);
   message.concat("$");
   sendPacket(masterIP, port, message);
-  Serial.println("OUt of send message");
 }
 
 void handleRoot(){
   Serial.println("Root page accessed by a client!");
   server.send ( 200, "text/plain", "Hello, you are at root!");
 }
+
 
 void handleNotFound(){
   server.send ( 404, "text/plain", "404, No resource found");
@@ -241,7 +235,6 @@ void handleMessage(){
     message = server.arg("data");
     separateParameters(message);
     parameterDecode();
-    Serial.println("Message Handled");
   }else{
     server.send(200, "text/plain", "Message Without Body");
   }
@@ -251,7 +244,6 @@ void setup() {
   pinMode(powerBtn, INPUT_PULLUP);
   pinMode(led, OUTPUT);
   pinMode(relay, OUTPUT);
-  digitalWrite(relay, HIGH);
   Serial.begin(115200);
 
   EEPROM.begin(EEPROM_SIZE);
@@ -262,12 +254,11 @@ void setup() {
   printDetails();
   WiFi.mode(WIFI_STA);
   WiFi.begin(ssid,password);
-  Serial.println("STA MODE....");
-  Serial.print("Connecting..");
+  Serial.print("Connecting in STA Mode..");
 
   gotIpEventHandler = WiFi.onStationModeGotIP([](const WiFiEventStationModeGotIP& event)
   {
-    Serial.print("Station connected, IP: ");
+    Serial.print("Connected to AP, IP: ");
     Serial.println(WiFi.localIP());
     ipAssigned = 1;
   });
@@ -276,38 +267,26 @@ void setup() {
   {
     ipAssigned = 0;
   });
-
-  /*while(WiFi.status() != WL_CONNECTED)
-  {
-    delay(500);
-    Serial.print(".");
-  }
-  delay(300);
-  while(!ipAssigned);
-  configure();
-  server.begin();
-  Serial.println("Server Started!"); */
 }
+
 
 void loop() {
   server.handleClient();
-  if(WiFi.status() != WL_CONNECTED){
-    conStat = 0;
-    while (digitalRead(powerBtn)==HIGH && WiFi.status() != WL_CONNECTED) {
+  if(digitalRead(powerBtn)==HIGH && WiFi.status() != WL_CONNECTED){
+    while (WiFi.status() != WL_CONNECTED) {
       delay(200);
       Serial.print(".");
-      Serial.print(digitalRead(powerBtn));
       //blink(1);
     }
     
     if(WiFi.status() == WL_CONNECTED){
       while(!ipAssigned);
       configure();
-      Serial.println("Configured");
       server.on("/", handleRoot);
       server.on("/message", handleMessage);
       server.onNotFound(handleNotFound);
       server.begin();
+      Serial.printf("\nServer ON: %d\n", port);
       blink(3);
     }
   }
@@ -334,14 +313,11 @@ void loop() {
         if(relayStat == 1){
           digitalWrite(relay, HIGH);
           relayStat = 0;
-          Serial.println("Relay HIgh");
         }else{
           digitalWrite(relay, LOW);
           relayStat = 1;
-          Serial.println("Relay LOW");
         }
-        if(conStat == 1)
-          sendNodeStat();
+        sendNodeStat();
       }
     }
   }
