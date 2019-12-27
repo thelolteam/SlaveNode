@@ -161,6 +161,7 @@ void parameterDecode()
     strcpy(password, parameter[3].c_str());
     setMetaData();
     sendReply("NODE: APConfig RCVD");
+    restartDevice();
   }
   else if(parameter[1].equals("action@reset"))
   {
