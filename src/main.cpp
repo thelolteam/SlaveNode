@@ -19,7 +19,7 @@ const char* default_SSID="ESP32";
 const char* default_pass="12345678";
 const char* default_name = "Node";
 const int ssidLoc = 0, passLoc = 10, nameLoc = 20; 
-const int port = 80;
+const int port = 8080;
 char ssid[11], password[11], name[11];
 
 IPAddress masterIP(192, 168, 1, 1);
@@ -62,7 +62,6 @@ void blink(int times){
     delay(300);
   }
 }
-
 
 void writeMemory(char addr, char *data){
   int i;
@@ -158,6 +157,7 @@ void parameterDecode()
   else if(parameter[1].equals("action@config"))
   {
     id = parameter[3].toInt();
+    conStat = parameter[5].toInt();
     Serial.print("ID Received: ");
     Serial.println(id);
     sendReply("Node: Config RCVD");
@@ -182,7 +182,7 @@ void parameterDecode()
 void sendPacket(IPAddress ip, int port, String &message){
   url = "http://";
   url.concat(ip.toString());
-  url.concat("/message?data=");
+  url.concat(":8080/message?data=");
   url.concat(message);
 
   Serial.print("URL: ");
@@ -199,8 +199,6 @@ void sendPacket(IPAddress ip, int port, String &message){
   }
   client.end();
 }
-
-
 
 void sendNodeStat(){
   message = "client@node$action@stat$2$";
@@ -228,17 +226,10 @@ void configure()
   Serial.println("OUt of send message");
 }
 
-
-
-
-
-
-
 void handleRoot(){
   Serial.println("Root page accessed by a client!");
   server.send ( 200, "text/plain", "Hello, you are at root!");
 }
-
 
 void handleNotFound(){
   server.send ( 404, "text/plain", "404, No resource found");
@@ -260,6 +251,7 @@ void setup() {
   pinMode(powerBtn, INPUT_PULLUP);
   pinMode(led, OUTPUT);
   pinMode(relay, OUTPUT);
+  digitalWrite(relay, HIGH);
   Serial.begin(115200);
 
   EEPROM.begin(EEPROM_SIZE);
@@ -297,15 +289,15 @@ void setup() {
   Serial.println("Server Started!"); */
 }
 
-
 void loop() {
   server.handleClient();
-  if(digitalRead(powerBtn)==HIGH && WiFi.status() != WL_CONNECTED){
-    while (WiFi.status() != WL_CONNECTED) {
+  if(WiFi.status() != WL_CONNECTED){
+    conStat = 0;
+    while (digitalRead(powerBtn)==HIGH && WiFi.status() != WL_CONNECTED) {
       delay(200);
       Serial.print(".");
       Serial.print(digitalRead(powerBtn));
-      blink(1);
+      //blink(1);
     }
     
     if(WiFi.status() == WL_CONNECTED){
@@ -348,7 +340,8 @@ void loop() {
           relayStat = 1;
           Serial.println("Relay LOW");
         }
-        sendNodeStat();
+        if(conStat == 1)
+          sendNodeStat();
       }
     }
   }
