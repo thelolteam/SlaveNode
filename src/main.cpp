@@ -115,6 +115,7 @@ void resetDevice(){
   strcpy(name, default_name);
   setMetaData();
   setName();
+  Serial.println("Device Reset");
   restartDevice();
 }
 
@@ -138,13 +139,35 @@ void sendReply(String message){
   server.send(200, "text/plain", message);
 }
 
+void setRelay(){
+  if(relayStat == 1){
+    digitalWrite(relay, LOW);
+  }else{
+    digitalWrite(relay, HIGH);
+  }
+}
+
+void invertRelay(){
+  if(relayStat == 1){
+    digitalWrite(relay, HIGH);
+    relayStat = 0;
+  }else{
+    digitalWrite(relay, LOW);
+    relayStat = 1;
+  }
+}
+
 void parameterDecode()
 {
   if(parameter[1].equals("action@stat"))
-  {
-    strcpy(name, parameter[4].c_str());
+  { 
     conStat = parameter[5].toInt();
     relayStat = parameter[6].toInt();
+    setRelay();
+    if(strcmp(name, parameter[4].c_str()) != 0){
+      strcpy(name, parameter[4].c_str());
+      setName();
+    }
     sendReply("Node: Stat RCVD");
   }
   else if(parameter[1].equals("action@config"))
@@ -162,6 +185,7 @@ void parameterDecode()
     strcpy(password, parameter[3].c_str());
     setMetaData();
     sendReply("NODE: APConfig RCVD");
+    delay(5000);
     restartDevice();
   }
   else if(parameter[1].equals("action@reset"))
@@ -302,6 +326,7 @@ void loop() {
     digitalWrite(led ,LOW);
     if(millis() - cur > 1000){
       Serial.println("Press and Hold");
+      //resetDevice();
     }else
     {
       cur = millis();
@@ -314,13 +339,7 @@ void loop() {
       else
       {
         Serial.println("SingleTap");
-        if(relayStat == 1){
-          digitalWrite(relay, HIGH);
-          relayStat = 0;
-        }else{
-          digitalWrite(relay, LOW);
-          relayStat = 1;
-        }
+        invertRelay();
         sendNodeStat();
       }
     }
