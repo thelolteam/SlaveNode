@@ -15,6 +15,7 @@
 using namespace std;
 
 int ipAssigned = 0;
+int mode = 0;
 const char* default_SSID="ESP32";
 const char* default_pass="12345678";
 const char* default_name = "Node";
@@ -37,6 +38,7 @@ int parameterCount = 0;
 
 WiFiEventHandler gotIpEventHandler;
 WiFiEventHandler stationModeDisconnectedHandler;
+WiFiEventHandler wiFiEventSoftAPModeStationConnected, wiFiEventSoftAPModeStationDisconnected;
 
 void printDetails(){
   Serial.print("Id: ");
@@ -53,14 +55,14 @@ void printDetails(){
   Serial.println(name);
 }
 
-void blink(int times){
+/*void blink(int times){
   for(int i=0; i<times; i++){
     digitalWrite(led, HIGH);
     delay(500);
     digitalWrite(led, LOW);
     delay(300);
   }
-}
+}*/
 
 
 void writeMemory(char addr, char *data){
@@ -142,17 +144,21 @@ void sendReply(String message){
 void setRelay(){
   if(relayStat == 1){
     digitalWrite(relay, LOW);
+    digitalWrite(led, HIGH);
   }else{
     digitalWrite(relay, HIGH);
+    digitalWrite(led, LOW);
   }
 }
 
 void invertRelay(){
   if(relayStat == 1){
     digitalWrite(relay, HIGH);
+    digitalWrite(led, LOW);
     relayStat = 0;
   }else{
     digitalWrite(relay, LOW);
+    digitalWrite(led, HIGH);
     relayStat = 1;
   }
 }
@@ -184,6 +190,7 @@ void parameterDecode()
     strcpy(ssid, parameter[2].c_str());
     strcpy(password, parameter[3].c_str());
     setMetaData();
+    setName();
     sendReply("NODE: APConfig RCVD");
     delay(5000);
     restartDevice();
@@ -258,7 +265,8 @@ void handleNotFound(){
 }
 
 void handleMessage(){
-  blink(1);
+  //blink(1);
+  Serial.println("Got");
   if(server.hasArg("data")){
     message = server.arg("data");
     separateParameters(message);
@@ -266,6 +274,31 @@ void handleMessage(){
   }else{
     server.send(200, "text/plain", "Message Without Body");
   }
+}
+
+void startAPMode(){
+  mode = 1;
+  conStat = 0;
+  //server.stop();
+  //WiFi.disconnect();
+  delay(500);
+
+  WiFi.mode(WIFI_AP);
+  String apSsid = "Node";
+  apSsid.concat(name);
+  WiFi.softAP(apSsid, "", 1, 0, 1);
+  delay(100);
+  IPAddress myIP(192, 168, 1, 1);
+  IPAddress mask(255, 255, 255, 0);
+  WiFi.softAPConfig(myIP, myIP, mask);
+
+  Serial.print("Node IP: ");
+  Serial.println(WiFi.softAPIP());
+  server.on("/", handleRoot);
+  server.on("/message", handleMessage);
+  server.onNotFound(handleNotFound);
+  server.begin();
+  Serial.printf("Server Started: %d\n\n", port);
 }
 
 void setup() {
@@ -295,13 +328,15 @@ void setup() {
   {
     ipAssigned = 0;
   });
-}
 
+
+  mode = 0;
+}
 
 void loop() {
   server.handleClient();
-  if(digitalRead(powerBtn)==HIGH && WiFi.status() != WL_CONNECTED){
-    while (WiFi.status() != WL_CONNECTED) {
+  if(WiFi.status() != WL_CONNECTED){
+    while (digitalRead(powerBtn) == HIGH && WiFi.status() != WL_CONNECTED && mode==0) {
       delay(200);
       Serial.print(".");
       //blink(1);
@@ -315,7 +350,7 @@ void loop() {
       server.onNotFound(handleNotFound);
       server.begin();
       Serial.printf("\nServer ON: %d\n", port);
-      blink(3);
+      //blink(3);
     }
   }
 
@@ -323,24 +358,29 @@ void loop() {
     digitalWrite(led, HIGH);
     unsigned long cur = millis();
     while(digitalRead(powerBtn) == LOW && millis() - cur < 1500);
-    digitalWrite(led ,LOW);
     if(millis() - cur > 1000){
+      digitalWrite(led ,LOW);
       Serial.println("Press and Hold");
-      //resetDevice();
+      resetDevice();
     }else
     {
       cur = millis();
       while(millis() - cur < 500 && digitalRead(powerBtn) == HIGH);
       if(millis() - cur < 500)
       {
+        digitalWrite(led ,LOW);
         Serial.println("DoubleTap");
-        delay(500);
+        if(mode == 0)
+          startAPMode();
+        else
+          restartDevice();
       }
       else
       {
         Serial.println("SingleTap");
         invertRelay();
-        sendNodeStat();
+        if(conStat && mode==0)
+          sendNodeStat();
       }
     }
   }
