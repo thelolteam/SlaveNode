@@ -5,14 +5,16 @@
 #include <ESP8266WiFi.h>
 
 #define EEPROM_SIZE 48
-#define MAX_NODES 10
-#define MAX_BODY_LINES 7
-#define MAX_CLIENTS 5
 #define powerBtn 2
 #define led 16
 #define relay 4
+#define minDown 100
+#define clickGap 400
+#define hold 1200
 
 using namespace std;
+
+unsigned long cur;
 
 int ipAssigned = 0;
 int mode = 0;
@@ -20,9 +22,9 @@ const char* default_SSID="ESP32";
 const char* default_pass="12345678";
 const char* default_name = "Node";
 const int ssidLoc = 0, passLoc = 10, nameLoc = 20; 
-const int port = 8080;
 char ssid[11], password[11], name[11];
 
+const int port = 8080;
 IPAddress masterIP(192, 168, 1, 1);
 ESP8266WebServer server(port);
 HTTPClient client;
@@ -34,11 +36,9 @@ const int type = 2;
 String message, url="";
 
 String parameter[7];
-int parameterCount = 0;
 
 WiFiEventHandler gotIpEventHandler;
 WiFiEventHandler stationModeDisconnectedHandler;
-WiFiEventHandler wiFiEventSoftAPModeStationConnected, wiFiEventSoftAPModeStationDisconnected;
 
 void printDetails(){
   Serial.print("Id: ");
@@ -107,7 +107,6 @@ void setName()
 
 void restartDevice(){
   Serial.println("Restarting....");
-  delay(1000);
   ESP.restart();
 }
 
@@ -122,7 +121,6 @@ void resetDevice(){
 }
 
 void separateParameters(String &body){
-  parameterCount = 0;
   int startI = 0, endI = 0, i;
   for(i=0; i<7; i++){
     parameter[i] = "";
@@ -130,7 +128,6 @@ void separateParameters(String &body){
       endI = body.indexOf('$', startI);
       parameter[i] = body.substring(startI, endI);
       startI = endI+1;
-      parameterCount++;
     }
   }
 }
@@ -180,8 +177,6 @@ void parameterDecode()
   {
     id = parameter[3].toInt();
     conStat = parameter[5].toInt();
-    Serial.print("ID Received: ");
-    Serial.println(id);
     sendReply("Node: Config RCVD");
 
   }
@@ -192,7 +187,7 @@ void parameterDecode()
     setMetaData();
     setName();
     sendReply("NODE: APConfig RCVD");
-    delay(5000);
+    delay(7000);
     restartDevice();
   }
   else if(parameter[1].equals("action@reset"))
@@ -213,21 +208,22 @@ void sendPacket(IPAddress ip, int port, String &message){
   Serial.println(url);
   client.begin(url);
 
+  int retry = 5;
   int httpCode = client.GET();
   if(httpCode > 0){
     if(httpCode == HTTP_CODE_OK){
-      Serial.printf("Request Sent: HTTP Res Code: %d\n", httpCode);
+      Serial.printf("\nRequest Sent: %d\n", httpCode);
       client.end();
+      retry--;
     }
   }else{
     Serial.println("HTTP GET Error");
     client.end();
     delay(1000);
-    sendPacket(ip, port, message);
+    if(retry>0)
+      sendPacket(ip, port, message);
   }
 }
-
-
 
 void sendNodeStat(){
   message = "client@node$action@stat$2$";
@@ -245,7 +241,6 @@ void sendNodeStat(){
 
 void configure()
 {
-  //type$id$name$conStat$relayStat$
   message = "client@node$action@config$2$0$";
   message.concat(name);
   message.concat("$0$");
@@ -256,35 +251,30 @@ void configure()
 
 void handleRoot(){
   Serial.println("Root page accessed by a client!");
-  server.send ( 200, "text/plain", "Hello, you are at root!");
+  server.send ( 200, "text/plain", "Node: Hello, you are at root!");
 }
 
 
 void handleNotFound(){
-  server.send ( 404, "text/plain", "404, No resource found");
+  server.send ( 404, "text/plain", "Node: 404, No resource found");
 }
 
 void handleMessage(){
-  //blink(1);
-  Serial.println("Got");
   if(server.hasArg("data")){
     message = server.arg("data");
     separateParameters(message);
     parameterDecode();
   }else{
-    server.send(200, "text/plain", "Message Without Body");
+    server.send(200, "text/plain", "Node: Message Without Body");
   }
 }
 
 void startAPMode(){
+  Serial.println("AP mode");
   mode = 1;
   conStat = 0;
-  //server.stop();
-  //WiFi.disconnect();
-  delay(500);
-
   WiFi.mode(WIFI_AP);
-  String apSsid = "Node";
+  String apSsid = "Node_";
   apSsid.concat(name);
   WiFi.softAP(apSsid, "", 1, 0, 1);
   delay(100);
@@ -292,7 +282,7 @@ void startAPMode(){
   IPAddress mask(255, 255, 255, 0);
   WiFi.softAPConfig(myIP, myIP, mask);
 
-  Serial.print("Node IP: ");
+  Serial.print("Node AP IP: ");
   Serial.println(WiFi.softAPIP());
   server.on("/", handleRoot);
   server.on("/message", handleMessage);
@@ -305,6 +295,7 @@ void setup() {
   pinMode(powerBtn, INPUT_PULLUP);
   pinMode(led, OUTPUT);
   pinMode(relay, OUTPUT);
+  digitalWrite(relay, HIGH);
   Serial.begin(115200);
 
   EEPROM.begin(EEPROM_SIZE);
@@ -315,8 +306,6 @@ void setup() {
   printDetails();
   WiFi.mode(WIFI_STA);
   WiFi.begin(ssid,password);
-  Serial.print("Connecting in STA Mode..");
-
   gotIpEventHandler = WiFi.onStationModeGotIP([](const WiFiEventStationModeGotIP& event)
   {
     Serial.print("Connected to AP, IP: ");
@@ -335,9 +324,10 @@ void setup() {
 
 void loop() {
   server.handleClient();
-  if(WiFi.status() != WL_CONNECTED){
+  if(WiFi.status() != WL_CONNECTED && mode == 0){
+    Serial.print("Connecting in STA Mode..");
     while (digitalRead(powerBtn) == HIGH && WiFi.status() != WL_CONNECTED && mode==0) {
-      delay(200);
+      delay(100);
       Serial.print(".");
       //blink(1);
     }
@@ -355,18 +345,52 @@ void loop() {
   }
 
   if(digitalRead(powerBtn) == LOW){
+    cur = millis();
+    while(digitalRead(powerBtn) == LOW && (millis() - cur) < hold);
+
+    if(millis() - cur < clickGap){
+      Serial.println("Here");
+      delay(minDown);
+      cur = millis();
+      boolean doubleClick = true;
+      while(digitalRead(powerBtn) == HIGH){
+        if(millis() - cur > clickGap){
+          doubleClick = false;
+          break;
+        }
+      }
+      if(doubleClick){
+        Serial.println("Double Tap");
+        if(mode == 0)
+          startAPMode();
+        else
+          restartDevice();
+      }else{
+        Serial.println("Single Tap");
+        invertRelay();
+        if(conStat && mode==0)
+          sendNodeStat();
+      }
+    }else{
+      Serial.println("Press and Hold");
+      resetDevice();
+    }
+  }
+
+
+  /*if(digitalRead(powerBtn) == LOW){
     digitalWrite(led, HIGH);
     unsigned long cur = millis();
     while(digitalRead(powerBtn) == LOW && millis() - cur < 1500);
     if(millis() - cur > 1000){
       digitalWrite(led ,LOW);
       Serial.println("Press and Hold");
-      resetDevice();
+     
     }else
     {
       cur = millis();
       while(millis() - cur < 500 && digitalRead(powerBtn) == HIGH);
-      if(millis() - cur < 500)
+      if(millis() - cur < 400)
       {
         digitalWrite(led ,LOW);
         Serial.println("DoubleTap");
@@ -383,5 +407,5 @@ void loop() {
           sendNodeStat();
       }
     }
-  }
+  }*/
 }
