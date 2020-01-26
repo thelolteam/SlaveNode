@@ -160,44 +160,6 @@ void invertRelay(){
   }
 }
 
-void parameterDecode()
-{
-  if(parameter[1].equals("action@stat"))
-  { 
-    conStat = parameter[5].toInt();
-    relayStat = parameter[6].toInt();
-    setRelay();
-    if(strcmp(name, parameter[4].c_str()) != 0){
-      strcpy(name, parameter[4].c_str());
-      setName();
-    }
-    sendReply("Node: Stat RCVD");
-  }
-  else if(parameter[1].equals("action@config"))
-  {
-    id = parameter[3].toInt();
-    conStat = parameter[5].toInt();
-    sendReply("Node: Config RCVD");
-
-  }
-  else if(parameter[1].equals("action@apconfig"))
-  {
-    strcpy(ssid, parameter[2].c_str());
-    strcpy(password, parameter[3].c_str());
-    setMetaData();
-    setName();
-    sendReply("NODE: APConfig RCVD");
-    delay(7000);
-    restartDevice();
-  }
-  else if(parameter[1].equals("action@reset"))
-  {
-    sendReply("Node: Reset RCVD");
-    resetDevice();
-  }
-  printDetails();
-}
-
 void sendPacket(IPAddress ip, int port, String &message){
   url = "http://";
   url.concat(ip.toString());
@@ -239,6 +201,64 @@ void sendNodeStat(){
   sendPacket(masterIP, port, message);
 }
 
+void parameterDecode()
+{
+  if(parameter[1].equals("action@stat"))
+  { 
+    conStat = parameter[5].toInt();
+    relayStat = parameter[6].toInt();
+    setRelay();
+    if(strcmp(name, parameter[4].c_str()) != 0){
+      strcpy(name, parameter[4].c_str());
+      setName();
+    }
+    sendReply("Node: Stat RCVD");
+  }
+  else if(parameter[1].equals("action@config"))
+  {
+    if(parameter[4].equals("APP")){
+      //Handshake with APP
+      sendReply("IRNode: Config Request From APP");
+      //The id sent in this message is for app. Just a shell so app feels like successfull handshake
+      message = "client@IRNode$action@config$3$1$";
+      message.concat(name);
+      message.concat("$");
+      conStat = 1;
+      message.concat(conStat);
+      message.concat("$0$");
+      masterIP = server.client().remoteIP();
+      sendPacket(masterIP, port, message);
+      //this is the id of this node when its connected to app directly. App requires this for event handling.
+      //this will be sent to app via sendNodeStat when app requests getNodeList
+      id = 0;
+    }else{
+      id = parameter[3].toInt();
+      conStat = parameter[5].toInt();
+      sendReply("Node: Config RCVD");
+    }
+  }else if(parameter[1].equals("action@getnodelist")){
+    sendReply("IRNode: NodeList Request");
+    sendNodeStat();
+  }
+  else if(parameter[1].equals("action@apconfig"))
+  {
+    strcpy(ssid, parameter[2].c_str());
+    strcpy(password, parameter[3].c_str());
+    setMetaData();
+    setName();
+    sendReply("NODE: APConfig RCVD");
+    delay(7000);
+    restartDevice();
+  }
+  else if(parameter[1].equals("action@reset"))
+  {
+    sendReply("Node: Reset RCVD");
+    resetDevice();
+  }
+  printDetails();
+}
+
+
 void configure()
 {
   message = "client@node$action@config$2$0$";
@@ -270,6 +290,7 @@ void handleMessage(){
 }
 
 void startAPMode(){
+  digitalWrite(led, HIGH);
   Serial.println("AP mode");
   mode = 1;
   conStat = 0;
@@ -317,8 +338,6 @@ void setup() {
   {
     ipAssigned = 0;
   });
-
-
   mode = 0;
 }
 
@@ -326,21 +345,26 @@ void loop() {
   server.handleClient();
   if(WiFi.status() != WL_CONNECTED && mode == 0){
     Serial.print("Connecting in STA Mode..");
+    unsigned long c;
     while (digitalRead(powerBtn) == HIGH && WiFi.status() != WL_CONNECTED && mode==0) {
-      delay(100);
+      yield();
       Serial.print(".");
-      //blink(1);
+      delay(100);
     }
     
     if(WiFi.status() == WL_CONNECTED){
-      while(!ipAssigned);
+      unsigned long i = millis();
+      while(!ipAssigned){
+        if(millis() - i < 5000)
+          yield();
+        delay(200);
+      }
       configure();
       server.on("/", handleRoot);
       server.on("/message", handleMessage);
       server.onNotFound(handleNotFound);
       server.begin();
       Serial.printf("\nServer ON: %d\n", port);
-      //blink(3);
     }
   }
 
@@ -376,36 +400,4 @@ void loop() {
       resetDevice();
     }
   }
-
-
-  /*if(digitalRead(powerBtn) == LOW){
-    digitalWrite(led, HIGH);
-    unsigned long cur = millis();
-    while(digitalRead(powerBtn) == LOW && millis() - cur < 1500);
-    if(millis() - cur > 1000){
-      digitalWrite(led ,LOW);
-      Serial.println("Press and Hold");
-     
-    }else
-    {
-      cur = millis();
-      while(millis() - cur < 500 && digitalRead(powerBtn) == HIGH);
-      if(millis() - cur < 400)
-      {
-        digitalWrite(led ,LOW);
-        Serial.println("DoubleTap");
-        if(mode == 0)
-          startAPMode();
-        else
-          restartDevice();
-      }
-      else
-      {
-        Serial.println("SingleTap");
-        invertRelay();
-        if(conStat && mode==0)
-          sendNodeStat();
-      }
-    }
-  }*/
 }
