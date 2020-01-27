@@ -39,6 +39,7 @@ String parameter[7];
 
 WiFiEventHandler gotIpEventHandler;
 WiFiEventHandler stationModeDisconnectedHandler;
+WiFiEventHandler softAPStationDisconnected, softAPStationConnected;
 
 void printDetails(){
   Serial.print("Id: ");
@@ -297,6 +298,15 @@ void startAPMode(){
   WiFi.mode(WIFI_AP);
   String apSsid = "Node_";
   apSsid.concat(name);
+
+  softAPStationConnected = WiFi.onSoftAPModeStationConnected([](const WiFiEventSoftAPModeStationConnected& event){
+    digitalWrite(led, LOW);
+  });
+
+  softAPStationDisconnected = WiFi.onSoftAPModeStationDisconnected([](const WiFiEventSoftAPModeStationDisconnected& event){
+    digitalWrite(led, HIGH);
+  });
+
   WiFi.softAP(apSsid, "", 1, 0, 1);
   delay(100);
   IPAddress myIP(192, 168, 1, 1);
